@@ -67,6 +67,8 @@
       // Click our invisible layer → get name from transportation_name
       map.on('click', 'roads-clickable', (e) => {
         const props = e.features[0].properties;
+        // Show ALL properties so we can see what's there
+        alert(JSON.stringify(props, null, 2));
         const name = props.name || props.ref || 'Unnamed road';
         showPopup(name, e.point);
         e.originalEvent.stopPropagation();
