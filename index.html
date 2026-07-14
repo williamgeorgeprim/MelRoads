@@ -11,16 +11,15 @@
     body { width: 100vw; height: 100vh; overflow: hidden; font-family: sans-serif; }
     #map { width: 100%; height: 100%; }
 
-    /* The popup card that appears when you click a road */
     #popup {
       position: absolute;
       background: white;
       border-radius: 12px;
       padding: 12px 16px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-      display: none;           /* hidden until a road is clicked */
+      display: none;
       min-width: 160px;
-      pointer-events: all;
+      max-width: 240px;
     }
     #popup-name {
       font-size: 1rem;
@@ -35,9 +34,6 @@
       border: none;
       padding: 0;
     }
-
-    /* Crosshair cursor when hovering over a road */
-    .map-hover-road { cursor: pointer; }
   </style>
 </head>
 <body>
@@ -49,7 +45,6 @@
   </div>
 
   <script>
-    // ── MAP SETUP ──
     const map = new maplibregl.Map({
       container: 'map',
       style: 'https://tiles.openfreemap.org/styles/positron',
@@ -58,60 +53,51 @@
     });
     map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
 
-    // ── ROAD CLICK ──
-    // MapLibre names its road layers — we listen to all of them
-    const ROAD_LAYERS = [
-      'road_motorway', 'road_trunk', 'road_primary',
-      'road_secondary', 'road_tertiary', 'road_street',
-      'road_motorway_link', 'road_trunk_link', 'road_primary_link'
-    ];
-
-    // Wait for map to fully load before attaching click events
     map.on('load', () => {
 
-      // Change cursor to pointer when hovering any road
-      ROAD_LAYERS.forEach(layer => {
-        // Check layer exists in this style before adding listener
-        if (!map.getLayer(layer)) return;
-
-        map.on('mouseenter', layer, () => {
-          map.getCanvas().style.cursor = 'pointer';
-        });
-        map.on('mouseleave', layer, () => {
-          map.getCanvas().style.cursor = '';
-        });
-
-        // Click a road → show popup with its name
-        map.on('click', layer, (e) => {
-          const feature = e.features[0];
-          const name = feature.properties.name || feature.properties.ref || 'Unnamed road';
-
-          showPopup(name, e.point);
-
-          // Stop the click from also firing the map's general click handler
-          e.originalEvent.stopPropagation();
-        });
+      // Instead of guessing layer names, we add our OWN invisible clickable
+      // layer directly on the transportation_name source — the one that has road names.
+      // This works regardless of what the style calls its layers.
+      map.addLayer({
+        id: 'roads-clickable',
+        type: 'line',
+        source: 'openmaptiles',
+        'source-layer': 'transportation',   // the geometry source layer
+        filter: ['has', 'name'],             // only roads that actually have a name
+        paint: {
+          'line-color': 'rgba(0,0,0,0)',     // fully transparent — invisible
+          'line-width': 12                   // but wide, so it's easy to tap
+        }
       });
 
-      // Click anywhere that's NOT a road → close popup
-      map.on('click', () => {
-        closePopup();
+      // Hover cursor
+      map.on('mouseenter', 'roads-clickable', () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', 'roads-clickable', () => {
+        map.getCanvas().style.cursor = '';
       });
 
+      // Click a road
+      map.on('click', 'roads-clickable', (e) => {
+        const props = e.features[0].properties;
+        const name = props.name || props.name_en || props.ref || 'Unnamed road';
+        showPopup(name, e.point);
+        e.originalEvent.stopPropagation();
+      });
+
+      // Click anywhere else → close
+      map.on('click', () => closePopup());
     });
 
-    // ── POPUP HELPERS ──
     function showPopup(name, point) {
       const popup = document.getElementById('popup');
       document.getElementById('popup-name').textContent = name;
-
-      // Position the popup near where you clicked
-      // point is in pixels from top-left of the map
       popup.style.left = (point.x + 12) + 'px';
       popup.style.top  = (point.y - 20) + 'px';
       popup.style.display = 'block';
 
-      // If popup would go off the right edge, flip it left
+      // Flip left if too close to right edge
       const rect = popup.getBoundingClientRect();
       if (rect.right > window.innerWidth - 8) {
         popup.style.left = (point.x - rect.width - 12) + 'px';
