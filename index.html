@@ -4,32 +4,123 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Melbourne Streets</title>
-
-  <!-- MapLibre GL JS — the map engine -->
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-
   <style>
-    /* Make the map fill the entire screen */
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { width: 100vw; height: 100vh; overflow: hidden; }
+    body { width: 100vw; height: 100vh; overflow: hidden; font-family: sans-serif; }
     #map { width: 100%; height: 100%; }
+
+    /* The popup card that appears when you click a road */
+    #popup {
+      position: absolute;
+      background: white;
+      border-radius: 12px;
+      padding: 12px 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      display: none;           /* hidden until a road is clicked */
+      min-width: 160px;
+      pointer-events: all;
+    }
+    #popup-name {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    #popup-close {
+      font-size: 0.75rem;
+      color: #999;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+
+    /* Crosshair cursor when hovering over a road */
+    .map-hover-road { cursor: pointer; }
   </style>
 </head>
 <body>
 
   <div id="map"></div>
+  <div id="popup">
+    <div id="popup-name">Road name</div>
+    <button id="popup-close" onclick="closePopup()">dismiss</button>
+  </div>
 
   <script>
+    // ── MAP SETUP ──
     const map = new maplibregl.Map({
-      container: 'map',            // the div above
-      style: 'https://tiles.openfreemap.org/styles/positron', // clean, free map tiles — no key needed
-      center: [144.9631, -37.8136], // Melbourne CBD [lng, lat]
+      container: 'map',
+      style: 'https://tiles.openfreemap.org/styles/positron',
+      center: [144.9631, -37.8136],
       zoom: 11
     });
-
-    // Zoom controls bottom-right
     map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+
+    // ── ROAD CLICK ──
+    // MapLibre names its road layers — we listen to all of them
+    const ROAD_LAYERS = [
+      'road_motorway', 'road_trunk', 'road_primary',
+      'road_secondary', 'road_tertiary', 'road_street',
+      'road_motorway_link', 'road_trunk_link', 'road_primary_link'
+    ];
+
+    // Wait for map to fully load before attaching click events
+    map.on('load', () => {
+
+      // Change cursor to pointer when hovering any road
+      ROAD_LAYERS.forEach(layer => {
+        // Check layer exists in this style before adding listener
+        if (!map.getLayer(layer)) return;
+
+        map.on('mouseenter', layer, () => {
+          map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', layer, () => {
+          map.getCanvas().style.cursor = '';
+        });
+
+        // Click a road → show popup with its name
+        map.on('click', layer, (e) => {
+          const feature = e.features[0];
+          const name = feature.properties.name || feature.properties.ref || 'Unnamed road';
+
+          showPopup(name, e.point);
+
+          // Stop the click from also firing the map's general click handler
+          e.originalEvent.stopPropagation();
+        });
+      });
+
+      // Click anywhere that's NOT a road → close popup
+      map.on('click', () => {
+        closePopup();
+      });
+
+    });
+
+    // ── POPUP HELPERS ──
+    function showPopup(name, point) {
+      const popup = document.getElementById('popup');
+      document.getElementById('popup-name').textContent = name;
+
+      // Position the popup near where you clicked
+      // point is in pixels from top-left of the map
+      popup.style.left = (point.x + 12) + 'px';
+      popup.style.top  = (point.y - 20) + 'px';
+      popup.style.display = 'block';
+
+      // If popup would go off the right edge, flip it left
+      const rect = popup.getBoundingClientRect();
+      if (rect.right > window.innerWidth - 8) {
+        popup.style.left = (point.x - rect.width - 12) + 'px';
+      }
+    }
+
+    function closePopup() {
+      document.getElementById('popup').style.display = 'none';
+    }
   </script>
 
 </body>
